@@ -91,7 +91,7 @@ function parseIpv6MappedIpv4(host: string): number | null {
   return ((a << 24) | (b << 16) | (c << 8) | d) >>> 0;
 }
 
-function isBlockedIpLiteral(host: string): boolean {
+export function isBlockedIpLiteral(host: string): boolean {
   const normalized = normalizeLiteralHost(host);
   const lower = normalized.toLowerCase();
   if (lower === '::1' || lower === '::') return true;
@@ -110,7 +110,7 @@ function isBlockedIpLiteral(host: string): boolean {
   return isBlockedIpv4Int(ipv4ToInt(normalized));
 }
 
-function normalizeHostForValidation(host: string): string {
+export function normalizeHostForValidation(host: string): string {
   const trimmed = normalizeLiteralHost(host.trim());
   if (!trimmed) return trimmed;
 

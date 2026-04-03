@@ -23,7 +23,12 @@ import { requireAdminRateLimit } from '../middleware/rate-limit';
 import { computePublicStatusPayload } from '../public/status';
 import { refreshPublicStatusSnapshot } from '../snapshots';
 import { runHttpCheck } from '../monitor/http';
-import { validateHttpTarget, validateTcpTarget } from '../monitor/targets';
+import {
+  isBlockedIpLiteral,
+  normalizeHostForValidation,
+  validateHttpTarget,
+  validateTcpTarget,
+} from '../monitor/targets';
 import { runTcpCheck } from '../monitor/tcp';
 import {
   dispatchWebhookToChannelLegacy,
@@ -52,6 +57,20 @@ import {
   createNotificationChannelInputSchema,
   patchNotificationChannelInputSchema,
 } from '../schemas/notification-channels';
+
+function validateWebhookUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname;
+    if (!hostname) return 'webhook url must include a hostname';
+    if (hostname.toLowerCase() === 'localhost') return 'webhook url hostname is not allowed';
+    const normalized = normalizeHostForValidation(hostname);
+    if (isBlockedIpLiteral(normalized)) return 'webhook url hostname is not allowed';
+    return null;
+  } catch {
+    return 'webhook url is invalid';
+  }
+}
 
 export const adminRoutes = new Hono<{ Bindings: Env }>();
 
@@ -760,6 +779,11 @@ adminRoutes.post('/notification-channels', async (c) => {
   });
   const input = createNotificationChannelInputSchema.parse(rawBody);
 
+  const urlError = validateWebhookUrl(input.config_json.url);
+  if (urlError) {
+    throw new AppError(400, 'INVALID_ARGUMENT', urlError);
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const isActive = input.is_active ?? true;
   const configJson = serializeDbJson(webhookChannelConfigSchema, input.config_json, {
@@ -803,6 +827,13 @@ adminRoutes.patch('/notification-channels/:id', async (c) => {
 
   if (!existing) {
     throw new AppError(404, 'NOT_FOUND', 'Notification channel not found');
+  }
+
+  if (input.config_json?.url) {
+    const urlError = validateWebhookUrl(input.config_json.url);
+    if (urlError) {
+      throw new AppError(400, 'INVALID_ARGUMENT', urlError);
+    }
   }
 
   const nextName = input.name ?? existing.name;
